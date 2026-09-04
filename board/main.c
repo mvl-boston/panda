@@ -92,7 +92,15 @@ bool is_car_safety_mode(uint16_t mode) {
   return (mode != SAFETY_SILENT) &&
          (mode != SAFETY_NOOUTPUT) &&
          (mode != SAFETY_ALLOUTPUT) &&
-         (mode != SAFETY_ELM327);
+         (mode != SAFETY_ELM327) &&
+         (mode != SAFETY_HONDA_RLX_FORWARDER);  // unattended CAN bridge, no host heartbeat
+}
+
+// A red panda running this firmware is the RLX steer bus bridge: it boots straight into the
+// forwarder safety mode and never needs a host. Any other board (e.g. the comma device's
+// internal panda) keeps the stock behavior and waits for openpilot to set a safety mode.
+static bool is_rlx_bridge_panda(void) {
+  return hw_type == HW_TYPE_RED_PANDA;
 }
 
 // ***************************** main code *****************************
@@ -162,8 +170,8 @@ static void tick_handler(void) {
         print("tx3:"); puth4(can_tx3_q.r_ptr); print("-"); puth4(can_tx3_q.w_ptr); print("\n");
       #endif
 
-      // set green LED to be controls allowed
-      led_set(LED_GREEN, controls_allowed);
+      // set green LED to be controls allowed, or solid on while the RLX bridge is running
+      led_set(LED_GREEN, controls_allowed || (current_safety_mode == SAFETY_HONDA_RLX_FORWARDER));
 
       // turn off the blue LED, turned on by CAN
       // unless we are in power saving mode
@@ -308,8 +316,14 @@ int main(void) {
     fan_init();
   }
 
-  // init to SILENT and can silent
-  set_safety_mode(SAFETY_SILENT, 0U);
+  // init to SILENT and can silent, unless this is the RLX steer bus bridge
+  if (is_rlx_bridge_panda()) {
+    // param 1U instead of 0U if the car's gateway already relays 0x194/0x33D onto the steer bus
+    set_safety_mode(SAFETY_HONDA_RLX_FORWARDER, 0U);
+    heartbeat_disabled = true;
+  } else {
+    set_safety_mode(SAFETY_SILENT, 0U);
+  }
 
   // enable CAN TXs
   enable_can_transceivers(true);

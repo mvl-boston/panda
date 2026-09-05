@@ -215,6 +215,23 @@ void can_rx(uint8_t can_number) {
       can_health[can_number].total_fwd_cnt += 1U;
     }
 
+    // second destination (bridge modes only)
+    int bus_copy_num = safety_fwd_copy_hook(bus_number, to_push.addr);
+    if ((bus_copy_num != -1) && (bus_copy_num != bus_fwd_num)) {
+      CANPacket_t to_copy;
+      to_copy.fd = to_push.fd;
+      to_copy.returned = 0U;
+      to_copy.rejected = 0U;
+      to_copy.extended = to_push.extended;
+      to_copy.addr = to_push.addr;
+      to_copy.bus = to_push.bus;
+      to_copy.data_len_code = to_push.data_len_code;
+      (void)memcpy(to_copy.data, to_push.data, dlc_to_len[to_push.data_len_code]);
+      can_set_checksum(&to_copy);
+      can_send(&to_copy, bus_copy_num, true);
+      can_health[can_number].total_fwd_cnt += 1U;
+    }
+
     safety_rx_invalid += safety_rx_hook(&to_push) ? 0U : 1U;
     ignition_can_hook(&to_push);
 
